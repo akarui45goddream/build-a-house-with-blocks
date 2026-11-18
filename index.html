@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>砌屋仔</title>
+<style>
+  body { font-family: "PingFang TC", "Microsoft JhengHei", sans-serif; background:#f5f0e8;
+         display:flex; flex-direction:column; align-items:center; margin:0; padding:12px; }
+  #district { font-size:16px; margin:4px 0 6px; font-weight:bold; text-align:center; }
+  canvas#game { border:2px solid #333; background:#fff; border-radius:6px; touch-action:none; }
+  #info-row { display:flex; gap:18px; align-items:flex-start; margin:6px 0; }
+  .slot { display:flex; flex-direction:column; align-items:center; font-size:14px; }
+  .slot canvas { border:1px dashed #aaa; border-radius:4px; background:#fafafa; margin-top:4px; }
+  #hint { font-size:14px; color:#555; margin:8px 0; text-align:center; }
+  #controls { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; justify-content:center; }
+  #controls button { font-size:18px; width:50px; height:50px; border-radius:10px;
+                     border:none; background:#2e86de; color:#fff; }
+  #controls button[data-act="hold"] { background:#8e44ad; font-size:14px; }
+  #controls button:active { background:#1b5fa8; }
+  #controls button[data-act="hold"]:active { background:#6c3483; }
+  #report { max-width:600px; margin-top:16px; padding:16px; background:#fff;
+            border-radius:8px; display:none; }
+  #report h2 { color:#c0392b; margin-top:0; }
+  #report h3 { color:#2c3e50; margin:14px 0 6px; font-size:16px;
+               border-left:4px solid #2e86de; padding-left:8px; }
+  .stat { margin:6px 0; }
+  .price { font-size:22px; color:#c0392b; font-weight:bold; }
+  .finding { display:flex; justify-content:space-between; padding:4px 0;
+             border-bottom:1px dotted #ddd; font-size:14px; }
+  .plus { color:#27ae60; font-weight:bold; }
+  .minus { color:#c0392b; font-weight:bold; }
+  .neutral { color:#888; }
+  #again { margin-top:14px; padding:8px 20px; font-size:16px; border:none;
+           border-radius:6px; background:#27ae60; color:#fff; cursor:pointer; }
+</style>
+</head>
+<body>
+<h1>砌屋仔</h1>
+<div id="district"></div>
+<div id="info-row">
+  <div class="slot">
+    <span id="hold-text">Hold：空</span>
+    <canvas id="hold-canvas" width="80" height="64"></canvas>
+  </div>
+  <div class="slot">
+    <span id="next-text"></span>
+    <canvas id="next-canvas" width="80" height="64"></canvas>
+  </div>
+</div>
+<canvas id="game" width="288" height="504"></canvas>
+<div id="hint">← → 移動　↑ 旋轉　↓ 加速　C / Hold 暫存<br>
+<span style="color:#c0392b;">方塊唔會消失，堆到頂就完場！大門只會喺開局出現一次。</span></div>
+<div id="controls">
+  <button data-act="left">◀</button>
+  <button data-act="rot">⟳</button>
+  <button data-act="down">▼</button>
+  <button data-act="right">▶</button>
+  <button data-act="hold">Hold</button>
+</div>
+<div id="report"></div>
+<script>
+const COLS=8, ROWS=14, SIZE=36;
+const canvas=document.getElementById('game'), ctx=canvas.getContext('2d');
+
+const DISTRICTS=[
+  {name:'太平山', tier:'山頂豪宅區', price:8000, color:'#8e44ad', buildCols:8, buildRows:14, comment:'山頂豪宅，名人聚居，地皮罕有，可以慢慢起！'},
+  {name:'淺水灣', tier:'海景豪宅區', price:7000, color:'#2980b9', buildCols:8, buildRows:13, comment:'海景第一排，地皮方正，起大屋一流！'},
+  {name:'中環',   tier:'核心商業區', price:6000, color:'#c0392b', buildCols:7, buildRows:13, comment:'返工一流，但地皮貴到飛起，唔可以浪費！'},
+  {name:'銅鑼灣', tier:'購物旺區',   price:5000, color:'#e67e22', buildCols:7, buildRows:11, comment:'樓下就係商場，但塊地唔算大，要精打細算！'},
+  {name:'尖沙咀', tier:'旅遊旺區',   price:4500, color:'#f1c40f', buildCols:6, buildRows:11, comment:'維港景色，遊客最愛，但地契有限制！'},
+  {name:'旺角',   tier:'平民旺區',   price:3500, color:'#27ae60', buildCols:5, buildRows:10, comment:'人多車多，地契窄，只能起中小型單位！'},
+  {name:'深水埗', tier:'舊區',       price:2500, color:'#7f8c8d', buildCols:5, buildRows:10, comment:'平民美食天堂，舊區地皮細，起唔到豪宅！'},
+  {name:'屯門',   tier:'新界西',     price:1800, color:'#16a085', buildCols:6, buildRows:11, comment:'有輕鐵，空氣好，地皮算鬆動！'},
+  {name:'元朗',   tier:'新界西',     price:1600, color:'#d35400', buildCols:6, buildRows:11, comment:'圍村文化，仲有老婆餅，地皮都夠用！'},
+];
+
+const CHANCE_CARDS=[
+  {text:'地鐵新支線通車，交通更方便！', factor:1.20},
+  {text:'大型商場開幕，人流大增！',    factor:1.15},
+  {text:'政府喺附近起公園，環境升級！',factor:1.10},
+  {text:'對面起咗新學校，家長搶住買！',factor:1.12},
+  {text:'颱風吹襲，維修費上升……',      factor:0.90},
+  {text:'附近工廠搬遷，空氣變差……',    factor:0.85},
+];
+
+const ROOM_TYPES=[
+  {name:'客廳', short:'客', color:'#e74c3c'},
+  {name:'睡房', short:'房', color:'#3498db'},
+  {name:'廚房', short:'廚', color:'#f39c12'},
+  {name:'廁所', short:'廁', color:'#2ecc71'},
+  {name:'儲物房', short:'儲', color:'#9b59b6'},
+];
+
+const DOOR_ROOM = {name:'大門', short:'門', color:'#5d4037'};
+
+const SHAPES=[
+  [[1,1,1,1]],
+  [[1,1],[1,1]],
+  [[0,1,0],[1,1,1]],
+  [[0,1,1],[1,1,0]],
+  [[1,1,0],[0,1,1]],
+  [[1,0,0],[1,1,1]],
+  [[0,0,1],[1,1,1]],
+];
+
+let board, current, next, holdPiece, canHold, roomCount, gameOver, district, timer;
+let buildCols, buildRows;
+
+function randPick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+function pickDistrict(){ return randPick(DISTRICTS); }
+
+function makePiece(){
+  const room = randPick(ROOM_TYPES);
+  const shape = SHAPES[Math.floor(Math.random()*SHAPES.length)].map(row=>row.slice());
+  return { shape, room, x:0, y:0 };
+}
+
+function makeDoorPiece(){
+  return { shape: [[1]], room: DOOR_ROOM, x:0, y:0 };
+}
+
+function showDistrict(){
+  document.getElementById('district').innerHTML =
+    `📍 地段：<span style="color:${district.color}">${district.name}</span>（${district.tier}）` +
+    `　基準呎價：$${district.price.toLocaleString()}/呎` +
+    `<br><span style="font-size:13px;color:#666;">地契可建範圍：${district.buildCols} × ${district.buildRows} 格` +
+    `（上限 ${(district.buildCols*district.buildRows*50).toLocaleString()} 呎）</span>`;
+}
+
+function drawPreview(cvsId, piece){
+  const cvs = document.getElementById(cvsId);
+  const c = cvs.getContext('2d');
+  c.clearRect(0, 0, cvs.width, cvs.height);
+  if(!piece) return;
+  const sh = piece.shape, rows = sh.length, cols = sh[0].length, cell = 14;
+  const ox = (cvs.width - cols*cell)/2, oy = (cvs.height - rows*cell)/2;
+  for(let r=0;r<rows;r++)for(let c2=0;c2<cols;c2++){
+    if(!sh[r][c2]) continue;
+    c.fillStyle = '#1a1a1a';
+    c.fillRect(ox + c2*cell, oy + r*cell, cell, cell);
+    c.fillStyle = piece.room.color;
+    c.fillRect(ox + c2*cell + 1.5, oy + r*cell + 1.5, cell - 3, cell - 3);
+  }
+}
+
+function updateNextLabel(){
+  document.getElementById('next-text').innerHTML =
+    `下一間：<b style="color:${next.room.color}">${next.room.name}</b>`;
+  drawPreview('next-canvas', next);
+}
+
+function updateHoldLabel(){
+  if(!holdPiece){
+    document.getElementById('hold-text').textContent = 'Hold：空';
+    drawPreview('hold-canvas', null);
+  } else {
+    document.getElementById('hold-text').innerHTML =
+      `Hold：<b style="color:${holdPiece.room.color}">${holdPiece.room.name}</b>`;
+    drawPreview('hold-canvas', holdPiece);
+  }
+}
+
+function resetCurrentPosition(){
+  current.x = Math.floor((buildCols - current.shape[0].length)/2);
+  current.y = 0;
+}
+
+function spawn(){
+  current = next || makePiece();
+  resetCurrentPosition();
+  next = makePiece();
+  canHold = true;
+  updateNextLabel();
+  draw();
+  if(collide(current.x, current.y, current.shape)) endGame();
+}
+
+function holdPieceFunc(){
+  if(gameOver || !current || !canHold) return;
+  if(holdPiece === null){
+    holdPiece = {shape: current.shape, room: current.room};
+    current = next;
+    next = makePiece();
+    resetCurrentPosition();
+    canHold = false;
+    updateHoldLabel();
+    updateNextLabel();
+    draw();
+    if(collide(current.x, current.y, current.shape)) endGame();
+  } else {
+    const temp = {shape: holdPiece.shape, room: holdPiece.room};
+    holdPiece = {shape: current.shape, room: current.room};
+    current = temp;
+    resetCurrentPosition();
+    canHold = false;
+    updateHoldLabel();
+    draw();
+    if(collide(current.x, current.y, current.shape)) endGame();
+  }
+}
+
+function drawCell(x, y, room){
+  ctx.fillStyle = '#1a1a1a';
+  ctx.fillRect(x, y, SIZE, SIZE);
+
+  const wall = 3;
+  ctx.fillStyle = room.color;
+  ctx.fillRect(x + wall, y + wall, SIZE - wall*2, SIZE - wall*2);
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 15px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(room.short, x + SIZE/2, y + SIZE/2);
+}
+
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  ctx.save();
+  ctx.fillStyle = '#d8d8d8';
+  if(buildCols < COLS) ctx.fillRect(buildCols*SIZE, 0, (COLS-buildCols)*SIZE, ROWS*SIZE);
+  if(buildRows < ROWS) ctx.fillRect(0, buildRows*SIZE, COLS*SIZE, (ROWS-buildRows)*SIZE);
+  ctx.strokeStyle = '#b0b0b0'; ctx.lineWidth = 1;
+  for(let i=-ROWS; i<COLS+ROWS; i++){
+    ctx.beginPath(); ctx.moveTo(i*SIZE,0); ctx.lineTo(i*SIZE-ROWS*SIZE, ROWS*SIZE); ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle='#888'; ctx.lineWidth=2; ctx.setLineDash([6,4]);
+  ctx.strokeRect(1,1,buildCols*SIZE-2,buildRows*SIZE-2);
+  ctx.restore();
+
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+    const cell=board[r][c]; if(cell) drawCell(c*SIZE, r*SIZE, cell);
+  }
+
+  if(current){
+    const sh=current.shape;
+    for(let r=0;r<sh.length;r++)for(let c=0;c<sh[r].length;c++){
+      if(sh[r][c]) drawCell((current.x+c)*SIZE,(current.y+r)*SIZE,current.room);
+    }
+  }
+}
+
+function collide(nx, ny, shape){
+  for(let r=0;r<shape.length;r++)for(let c=0;c<shape[r].length;c++){
+    if(!shape[r][c]) continue;
+    const bc=nx+c, br=ny+r;
+    if(bc<0 || bc>=buildCols || br>=buildRows) return true;
+    if(br>=0 && board[br][bc]) return true;
+  }
+  return false;
+}
+
+function rotateMatrix(m){
+  const rows=m.length, cols=m[0].length;
+  const res=Array.from({length:cols},()=>Array(rows).fill(0));
+  for(let r=0;r<rows;r++)for(let c=0;c<cols;c++) res[c][rows-1-r]=m[r][c];
+  return res;
+}
+
+function lock(){
+  const sh=current.shape, room=current.room;
+  for(let r=0;r<sh.length;r++)for(let c=0;c<sh[r].length;c++){
+    if(!sh[r][c]) continue;
+    const br=current.y+r, bc=current.x+c;
+    if(br>=0 && br<buildRows && bc>=0 && bc<buildCols){
+      board[br][bc]={name:room.name, short:room.short, color:room.color};
+      roomCount[room.name]=(roomCount[room.name]||0)+1;
+    }
+  }
+  spawn();
+}
+
+function move(dx){
+  if(gameOver || !current) return;
+  if(!collide(current.x+dx, current.y, current.shape)){ current.x+=dx; draw(); }
+}
+function rotate(){
+  if(gameOver || !current) return;
+  if(current.shape.length===1 && current.shape[0].length===1) return;
+  const rot=rotateMatrix(current.shape);
+  for(const dx of [0,-1,1,-2,2]){
+    if(!collide(current.x+dx, current.y, rot)){ current.shape=rot; current.x+=dx; draw(); return; }
+  }
+}
+function softDrop(){
+  if(gameOver || !current) return;
+  if(!collide(current.x, current.y+1, current.shape)){ current.y++; draw(); }
+  else { lock(); }
+}
+
+// —— 整體間隔評析（加重懲罰）——
+function analyzeLayout(){
+  const findings = [];
+  let total = 0;
+  const cells = [];
+  for(let r=0;r<buildRows;r++)for(let c=0;c<buildCols;c++){
+    if(board[r][c]){ cells.push({r,c,room:board[r][c]}); total++; }
+  }
+  if(total === 0) return {findings, totalDelta:0, windowed:0, isolated:0, fillRate:0};
+
+  const capacity = buildCols * buildRows;
+  const fillRate = total / capacity;
+
+  // 靠窗單位
+  let windowed = 0;
+  cells.forEach(({r,c,room})=>{
+    if((room.name==='睡房'||room.name==='客廳') &&
+       (c===0 || c===buildCols-1 || r===0)) windowed++;
+  });
+  if(windowed > 0){
+    findings.push({text:`有 ${windowed} 間房靠窗，採光良好`, delta: Math.min(0.20, windowed*0.02)});
+  }
+
+  // 大門位置
+  const doorCells = cells.filter(({room})=>room.name==='大門');
+  if(doorCells.length > 0){
+    const onEdge = doorCells.some(({r,c})=>c===0 || c===buildCols-1 || r===0);
+    if(onEdge){
+      findings.push({text:'大門貼街，出入方便', delta: 0.03});
+    } else {
+      findings.push({text:'大門藏喺屋內，風水奇怪', delta: -0.03});
+    }
+  }
+
+  // 孤立房間
+  let isolated = 0;
+  cells.forEach(({r,c})=>{
+    const nbrs=[[r-1,c],[r+1,c],[r,c-1],[r,c+1]];
+    if(!nbrs.some(([nr,nc])=>nr>=0&&nr<buildRows&&nc>=0&&nc<buildCols&&board[nr][nc])) isolated++;
+  });
+  if(isolated > 0){
+    findings.push({text:`有 ${isolated} 間孤立房間，間隔奇怪`, delta: -Math.min(0.10, isolated*0.02)});
+  }
+
+  // 地積比率
+  if(fillRate >= 0.75){
+    findings.push({text:`地積比率高（${Math.round(fillRate*100)}%），地盡其用`, delta: 0.10});
+  } else if(fillRate < 0.40){
+    findings.push({text:`地積比率偏低（${Math.round(fillRate*100)}%），浪費地皮`, delta: -0.05});
+  }
+
+  // 廳房比例（正向）
+  const living = roomCount['客廳']||0;
+  const bedroom = roomCount['睡房']||0;
+  if(living >= 2 && living >= bedroom*0.5){
+    findings.push({text:`廳房比例合理（廳 ${living}、房 ${bedroom}）`, delta: 0.05});
+  }
+
+  // —— 核心房間檢查（加重懲罰）——
+  if(total >= 4){
+    const core = living + bedroom;
+    const aux = (roomCount['廚房']||0) + (roomCount['廁所']||0) + (roomCount['儲物房']||0) + (roomCount['大門']||0);
+
+    if(bedroom === 0){
+      findings.push({text:'冇睡房，冇地方瞓覺', delta: -0.25});
+    }
+    if(living === 0){
+      findings.push({text:'冇客廳，連招呼朋友都唔得', delta: -0.15});
+    }
+    if(core / total < 0.3){
+      findings.push({text:`核心房間（廳+房）只佔 ${Math.round(core/total*100)}%，唔似住宅`, delta: -0.15});
+    }
+    if(aux / total > 0.6){
+      findings.push({text:`廚房/廁所/儲物房佔咗 ${Math.round(aux/total*100)}%，太多雜項`, delta: -0.15});
+    }
+    if(core === 0){
+      findings.push({text:'全屋淨係廚房同雜物房，呢個唔係住宅！', delta: -0.25});
+    }
+  }
+
+  // 房型太單一
+  const entries = Object.entries(roomCount);
+  const maxCount = Math.max(...entries.map(e=>e[1]));
+  if(total >= 4 && maxCount/total > 0.70){
+    const dominant = entries.find(e=>e[1]===maxCount)[0];
+    findings.push({text:`${dominant}佔咗 ${Math.round(maxCount/total*100)}%，房型太單一`, delta: -0.08});
+  }
+
+  // 連通性
+  const visited = Array.from({length:buildRows},()=>Array(buildCols).fill(false));
+  let maxGroup = 0;
+  for(let r=0;r<buildRows;r++)for(let c=0;c<buildCols;c++){
+    if(board[r][c] && !visited[r][c]){
+      let size=0;
+      const stack=[[r,c]]; visited[r][c]=true;
+      while(stack.length){
+        const [cr,cc]=stack.pop(); size++;
+        [[cr-1,cc],[cr+1,cc],[cr,cc-1],[cr,cc+1]].forEach(([nr,nc])=>{
+          if(nr>=0&&nr<buildRows&&nc>=0&&nc<buildCols&&board[nr][nc]&&!visited[nr][nc]){
+            visited[nr][nc]=true; stack.push([nr,nc]);
+          }
+        });
+      }
+      maxGroup = Math.max(maxGroup, size);
+    }
+  }
+  if(total >= 4 && maxGroup/total < 0.80){
+    findings.push({text:`有部分房間同主體分離，間隔唔連貫`, delta: -0.06});
+  }
+
+  let totalDelta = findings.reduce((s,f)=>s+f.delta, 0);
+  // 扣分上限放寬到 -60%，讓荒謬布局真正被狠狠扣
+  totalDelta = Math.max(-0.60, Math.min(0.30, totalDelta));
+  return {findings, totalDelta, windowed, isolated, fillRate};
+}
+
+function endGame(){
+  if(gameOver) return;
+  gameOver=true;
+  if(timer){ clearInterval(timer); timer=null; }
+
+  const total=Object.values(roomCount).reduce((a,b)=>a+b,0);
+  const storage=roomCount['儲物房']||0;
+  const living=roomCount['客廳']||0;
+
+  const capacity = buildCols * buildRows;
+  const maxArea = capacity * 50;
+  const area = total * 50;
+  const plotRatio = Math.round(total / capacity * 100);
+
+  const layout = analyzeLayout();
+
+  const baseValue = district.price * area;
+  const storageBonus = storage * 0.05;
+  const livingBonus = living * 0.03;
+  const facilityFactor = 1 + storageBonus + livingBonus;
+  const layoutFactor = 1 + layout.totalDelta;
+  const card = randPick(CHANCE_CARDS);
+  const finalValue = Math.round(baseValue * facilityFactor * layoutFactor * card.factor);
+
+  // 評級改用「地積比率」，唔再用總格數
+  const grade = plotRatio>=75 ? '超級豪宅' : plotRatio>=55 ? '豪宅' : plotRatio>=35 ? '上車盤' : '納米樓';
+  const comment = storage>=2 ? '儲物空間充足，適合一家大細！' :
+                  living>=2 ? '客廳寬敞，招呼朋友一流！' :
+                              '間隔實用，細細粒容易食！';
+  const landComment = buildCols<=5 ? '地契窄，起唔到豪宅，但勝在實用！' :
+                      buildCols>=7 ? '地皮鬆動，可以慢慢起大屋！' :
+                                     '地皮中規中矩，夠用有餘！';
+
+  const findingsHtml = layout.findings.length
+    ? layout.findings.map(f=>{
+        const pct = Math.round(f.delta*100);
+        const cls = pct>0 ? 'plus' : pct<0 ? 'minus' : 'neutral';
+        const sign = pct>0 ? '+' : '';
+        return `<div class="finding"><span>${f.text}</span><span class="${cls}">${sign}${pct}%</span></div>`;
+      }).join('')
+    : '<div class="finding"><span>間隔中規中矩，冇特別驚喜</span><span class="neutral">±0%</span></div>';
+
+  const layoutPct = Math.round(layout.totalDelta*100);
+  const layoutCls = layoutPct>0 ? 'plus' : layoutPct<0 ? 'minus' : 'neutral';
+  const layoutSign = layoutPct>0 ? '+' : '';
+
+  const el=document.getElementById('report');
+  el.style.display='block';
+  el.innerHTML=`
+    <h2>🏠 房屋報告：${grade}</h2>
+    <p class="stat">📍 地段：<b style="color:${district.color}">${district.name}</b>（${district.tier}）</p>
+    <p class="stat">📜 地契限制：可建範圍 ${buildCols}×${buildRows} 格，面積上限 ${maxArea.toLocaleString()} 呎</p>
+    <p class="stat">🏗️ 實際面積：${area.toLocaleString()} 呎（${total} 間房 × 50 呎）</p>
+    <p class="stat">📊 地積比率：${plotRatio}%</p>
+
+    <h3>🔍 整體間隔評析</h3>
+    ${findingsHtml}
+    <div class="finding" style="border-bottom:none;font-weight:bold;margin-top:6px;">
+      <span>間隔總調整</span><span class="${layoutCls}">${layoutSign}${layoutPct}%</span>
+    </div>
+
+    <h3>💰 樓價計算</h3>
+    <p class="stat">地段基準呎價：$${district.price.toLocaleString()}/呎</p>
+    <p class="stat">設施加成：儲物房 +${Math.round(storageBonus*100)}%、客廳 +${Math.round(livingBonus*100)}%</p>
+    <p class="stat">🃏 機會卡：${card.text}（樓價 ${card.factor>=1?'+':''}${Math.round((card.factor-1)*100)}%）</p>
+    <p class="stat price">最終估算樓價：$${finalValue.toLocaleString()}</p>
+
+    <p class="stat">🗣️ 地產經紀評語：${comment}${district.comment}${landComment}</p>
+    <p style="color:#888;font-size:12px;">（報告僅供參考，實際樓價以市場為準 😄）</p>
+    <button id="again">再玩一次</button>
+  `;
+  document.getElementById('again').addEventListener('click', initGame);
+}
+
+function initGame(){
+  if(timer){ clearInterval(timer); timer=null; }
+  board = Array.from({length:ROWS},()=>Array(COLS).fill(null));
+  current = null; next = null; holdPiece = null; canHold = true;
+  roomCount = {}; gameOver = false;
+  district = pickDistrict();
+  buildCols = district.buildCols;
+  buildRows = district.buildRows;
+  showDistrict();
+  const el=document.getElementById('report');
+  el.style.display='none';
+  el.innerHTML='';
+  updateHoldLabel();
+  next = makeDoorPiece();
+  spawn();
+  timer = setInterval(()=>{
+    if(gameOver || !current) return;
+    if(!collide(current.x, current.y+1, current.shape)){ current.y++; draw(); }
+    else { lock(); }
+  }, 800);
+}
+
+document.addEventListener('keydown', e=>{
+  if(e.key==='ArrowLeft'){ move(-1); e.preventDefault(); }
+  else if(e.key==='ArrowRight'){ move(1); e.preventDefault(); }
+  else if(e.key==='ArrowUp'){ rotate(); e.preventDefault(); }
+  else if(e.key==='ArrowDown'){ softDrop(); e.preventDefault(); }
+  else if(e.key==='c' || e.key==='C' || e.key==='Shift'){ holdPieceFunc(); e.preventDefault(); }
+});
+
+document.querySelectorAll('#controls button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const a=btn.dataset.act;
+    if(a==='left') move(-1);
+    if(a==='right') move(1);
+    if(a==='rot') rotate();
+    if(a==='down') softDrop();
+    if(a==='hold') holdPieceFunc();
+  });
+});
+
+initGame();
+</script>
+</body>
+</html>
