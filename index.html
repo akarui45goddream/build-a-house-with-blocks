@@ -1278,9 +1278,7 @@
   });
   document.getElementById('resume-btn').addEventListener('click', resumeGame);
   document.getElementById('restart-btn').addEventListener('click', initGame);
-  document.getElementById('pause-overlay').addEventListener('click', function(e){
-    if(e.target === pauseOverlay) resumeGame();
-  });
+  // 灰色背景唔再當「繼續」掣：只有「繼續」或右上角暫停圖示可以恢復遊戲
 
   document.addEventListener('visibilitychange', function(){
     if(document.hidden && !gameOver) pauseGame();
