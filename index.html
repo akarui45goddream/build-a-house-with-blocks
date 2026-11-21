@@ -471,7 +471,7 @@
 
   <div id="hint">
     <span class="touch-only">👉 畫面拖動：左右移動、向下加速；下面按鈕一樣得</span>
-    <span class="desktop-only">← → 移動　↑ 旋轉　↓ 加速　C / Hold 暫存</span>
+    <span class="desktop-only">← → 移動　↑ 旋轉　↓ 加速　C / Hold 暫存　空白鍵 暫停</span>
     <br>
     <span class="warn">方塊唔會消失，堆到頂就完場！大門只會喺開局出現一次。</span>
   </div>
@@ -1194,9 +1194,10 @@
     window.addEventListener('pointerup', function(e){ if(pid !== null && e.pointerId === pid) stop(); });
     window.addEventListener('pointercancel', function(e){ if(pid !== null && e.pointerId === pid) stop(); });
 
-    // 鍵盤操作（Enter / 空白鍵）：唔靠預設 click，避免同 pointerdown 重複觸發
+    // 鍵盤操作（Enter）：唔靠預設 click，避免同 pointerdown 重複觸發
+    // 空白鍵留返畀「暫停／繼續」，所以呢度唔攔 space，等 document 層統一處理
     btn.addEventListener('keydown', function(e){
-      if(e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar'){
+      if(e.key === 'Enter'){
         e.preventDefault();
         if(!gameOver && !paused) fn();
       }
@@ -1286,7 +1287,9 @@
 
   /* ---------- 鍵盤（桌面）---------- */
   document.addEventListener('keydown', function(e){
-    if(e.key === 'p' || e.key === 'P' || e.key === 'Escape'){
+    // P / Esc / 空白鍵 都可以暫停或繼續；空白鍵就算 focus 咗喺按鈕上都照樣暫停
+    if(e.key === 'p' || e.key === 'P' || e.key === 'Escape' ||
+       e.key === ' ' || e.key === 'Spacebar' || e.code === 'Space'){
       e.preventDefault();
       togglePause();
       return;
