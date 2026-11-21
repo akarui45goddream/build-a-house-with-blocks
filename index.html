@@ -305,8 +305,8 @@
     box-shadow:0 3px 0 var(--blue-dark);
   }
   .pill:active{ transform:translateY(2px); }
-
-  /* ---------- 結算報告 ---------- */
+  
+    /* ---------- 結算報告 ---------- */
   #report{
     position:fixed;
     inset:0;
@@ -481,7 +481,7 @@
   }
 
   /* ---------- 橫向手機 ---------- */
-  @media (max-height: 560px){
+  @media (max-height: 560px) and (pointer: coarse){
     #hint{ display:none; }
   }
 
@@ -533,17 +533,18 @@
   @media (min-width: 900px){
     #app{
       width:100%;
-      max-width:980px;
+      max-width:1120px;
       display:grid;
-      grid-template-columns:minmax(0,1fr) 340px;
-      grid-template-rows:auto auto auto 1fr;
+      grid-template-columns:minmax(0,1fr) 360px;
+      grid-template-rows:auto auto 1fr auto auto;
       grid-template-areas:
         "stage top"
         "stage hud"
-        "stage hint"
-        "stage controls";
-      gap:14px 30px;
-      padding:16px 24px;
+        "stage ."
+        "stage controls"
+        "stage hint";
+      gap:14px 26px;
+      padding:12px 20px;
       align-items:start;
     }
     #top{ grid-area:top; display:flex; flex-direction:column; gap:4px; }
@@ -590,18 +591,31 @@
     }
     #controls{
       grid-area:controls;
-      align-self:stretch;
       display:grid;
       grid-template-columns:1fr 1fr;
-      grid-auto-rows:clamp(58px, 8.5vh, 84px);
+      grid-auto-rows:clamp(56px, 8vh, 80px);
       gap:10px;
-      padding:0 0 4px;
-      align-content:end;
-      min-height:220px;
+      padding:0;
     }
     #controls button{ height:auto; min-height:58px; font-size:32px; border-radius:16px; }
     #controls button[data-act="hold"]{ grid-column:1/-1; font-size:20px; }
     #show-report{ font-size:16px; min-height:46px; padding:0 22px; }
+  }
+
+  /* ---------- 桌面但視窗唔高：再縮細一級，保證唔會爆版 ---------- */
+  @media (min-width: 900px) and (max-height: 720px){
+    #app{ gap:10px 20px; padding:8px 16px; }
+    #brand{ font-size:21px; }
+    .d-name{ font-size:18px; }
+    .d-meta{ font-size:14px; }
+    .slot canvas{ width:76px; height:56px; }
+    .slot-label{ font-size:14px; max-width:160px; }
+    #pause-btn{ width:48px; height:48px; font-size:20px; }
+    #hint{ font-size:18px; padding:10px 12px; }
+    #hint .key-guide{ gap:8px 16px; }
+    #hint .warn{ font-size:15.5px; margin-top:8px; padding-top:8px; }
+    #controls{ grid-auto-rows:clamp(50px, 7vh, 64px); gap:8px; }
+    #controls button{ min-height:50px; font-size:26px; }
   }
 </style>
 </head>
@@ -965,6 +979,570 @@
     }
   }
 
-  function collide(nx, ny, shape){</｜｜DSML｜｜ parameter>
-</｜｜DSML｜｜ invoke>
-</｜｜DSML｜｜ calls>
+  function collide(nx, ny, shape){
+    for(let r = 0; r < shape.length; r++){
+      for(let c = 0; c < shape[r].length; c++){
+        if(!shape[r][c]) continue;
+        const bc = nx + c, br = ny + r;
+        if(bc < 0 || bc >= buildCols || br >= buildRows) return true;
+        if(br >= 0 && board[br][bc]) return true;
+      }
+    }
+    return false;
+  }
+
+  function rotateMatrix(m){
+    const rows = m.length, cols = m[0].length;
+    const res = Array.from({length:cols}, function(){ return Array(rows).fill(0); });
+    for(let r = 0; r < rows; r++){
+      for(let c = 0; c < cols; c++) res[c][rows - 1 - r] = m[r][c];
+    }
+    return res;
+  }
+
+   function lock(){
+    const sh = current.shape, room = current.room;
+    for(let r = 0; r < sh.length; r++){
+      for(let c = 0; c < sh[r].length; c++){
+        if(!sh[r][c]) continue;
+        const br = current.y + r, bc = current.x + c;
+        if(br >= 0 && br < buildRows && bc >= 0 && bc < buildCols){
+          board[br][bc] = { name:room.name, short:room.short, color:room.color };
+          roomCount[room.name] = (roomCount[room.name] || 0) + 1;
+        }
+      }
+    }
+    spawn();
+  }
+
+  function move(dx){
+    if(gameOver || paused || !current) return;
+    if(!collide(current.x + dx, current.y, current.shape)){
+      current.x += dx;
+      draw();
+    }
+  }
+
+  function rotate(){
+    if(gameOver || paused || !current) return;
+    if(current.shape.length === 1 && current.shape[0].length === 1) return;
+    const rot = rotateMatrix(current.shape);
+    const kicks = [0, -1, 1, -2, 2];
+    for(let i = 0; i < kicks.length; i++){
+      const dx = kicks[i];
+      if(!collide(current.x + dx, current.y, rot)){
+        current.shape = rot;
+        current.x += dx;
+        draw();
+        return;
+      }
+    }
+  }
+
+  function softDrop(){
+    if(gameOver || paused || !current) return;
+    if(!collide(current.x, current.y + 1, current.shape)){
+      current.y++;
+      draw();
+    } else {
+      lock();
+    }
+  }
+
+  /* ---------- 整體間隔評析（加重懲罰）---------- */
+  function analyzeLayout(){
+    const findings = [];
+    let total = 0;
+    const cells = [];
+    for(let r = 0; r < buildRows; r++){
+      for(let c = 0; c < buildCols; c++){
+        if(board[r][c]){
+          cells.push({r:r, c:c, room:board[r][c]});
+          total++;
+        }
+      }
+    }
+    if(total === 0) return {findings:findings, totalDelta:0, windowed:0, isolated:0, fillRate:0};
+
+    const capacity = buildCols * buildRows;
+    const fillRate = total / capacity;
+
+    // 靠窗單位
+    let windowed = 0;
+    cells.forEach(function(cell){
+      const room = cell.room;
+      if((room.name === '睡房' || room.name === '客廳') &&
+         (cell.c === 0 || cell.c === buildCols - 1 || cell.r === 0)) windowed++;
+    });
+    if(windowed > 0){
+      findings.push({text:'有 ' + windowed + ' 間房靠窗，採光良好', delta:Math.min(0.20, windowed * 0.02)});
+    }
+
+    // 大門位置
+    const doorCells = cells.filter(function(cell){ return cell.room.name === '大門'; });
+    if(doorCells.length > 0){
+      const onEdge = doorCells.some(function(cell){
+        return cell.c === 0 || cell.c === buildCols - 1 || cell.r === 0;
+      });
+      if(onEdge){
+        findings.push({text:'大門貼街，出入方便', delta:0.03});
+      } else {
+        findings.push({text:'大門藏喺屋內，風水奇怪', delta:-0.03});
+      }
+    }
+
+    // 孤立房間
+    let isolated = 0;
+    cells.forEach(function(cell){
+      const r = cell.r, c = cell.c;
+      const nbrs = [[r-1,c],[r+1,c],[r,c-1],[r,c+1]];
+      const hasNbr = nbrs.some(function(n){
+        const nr = n[0], nc = n[1];
+        return nr >= 0 && nr < buildRows && nc >= 0 && nc < buildCols && board[nr][nc];
+      });
+      if(!hasNbr) isolated++;
+    });
+    if(isolated > 0){
+      findings.push({text:'有 ' + isolated + ' 間孤立房間，間隔奇怪', delta:-Math.min(0.10, isolated * 0.02)});
+    }
+
+    // 地積比率
+    if(fillRate >= 0.75){
+      findings.push({text:'地積比率高（' + Math.round(fillRate * 100) + '%），地盡其用', delta:0.10});
+    } else if(fillRate < 0.40){
+      findings.push({text:'地積比率偏低（' + Math.round(fillRate * 100) + '%），浪費地皮', delta:-0.05});
+    }
+
+    // 廳房比例（正向）
+    const living = roomCount['客廳'] || 0;
+    const bedroom = roomCount['睡房'] || 0;
+    if(living >= 2 && living >= bedroom * 0.5){
+      findings.push({text:'廳房比例合理（廳 ' + living + '、房 ' + bedroom + '）', delta:0.05});
+    }
+
+    // 核心房間檢查（加重懲罰）
+    if(total >= 4){
+      const core = living + bedroom;
+      const aux = (roomCount['廚房'] || 0) + (roomCount['廁所'] || 0) + (roomCount['儲物房'] || 0) + (roomCount['大門'] || 0);
+
+      if(bedroom === 0){
+        findings.push({text:'冇睡房，冇地方瞓覺', delta:-0.25});
+      }
+      if(living === 0){
+        findings.push({text:'冇客廳，連招呼朋友都唔得', delta:-0.15});
+      }
+      if(core / total < 0.3){
+        findings.push({text:'核心房間（廳+房）只佔 ' + Math.round(core / total * 100) + '%，唔似住宅', delta:-0.15});
+      }
+      if(aux / total > 0.6){
+        findings.push({text:'廚房/廁所/儲物房佔咗 ' + Math.round(aux / total * 100) + '%，太多雜項', delta:-0.15});
+      }
+      if(core === 0){
+        findings.push({text:'全屋淨係廚房同雜物房，呢個唔係住宅！', delta:-0.25});
+      }
+    }
+
+    // 房型太單一
+    const entries = Object.entries(roomCount);
+    let maxCount = 0;
+    entries.forEach(function(e){ if(e[1] > maxCount) maxCount = e[1]; });
+    if(total >= 4 && maxCount / total > 0.70){
+      const dominant = entries.find(function(e){ return e[1] === maxCount; })[0];
+      findings.push({text:dominant + '佔咗 ' + Math.round(maxCount / total * 100) + '%，房型太單一', delta:-0.08});
+    }
+
+    // 連通性
+    const visited = Array.from({length:buildRows}, function(){ return Array(buildCols).fill(false); });
+    let maxGroup = 0;
+    for(let r = 0; r < buildRows; r++){
+      for(let c = 0; c < buildCols; c++){
+        if(board[r][c] && !visited[r][c]){
+          let size = 0;
+          const stack = [[r,c]];
+          visited[r][c] = true;
+          while(stack.length){
+            const cur = stack.pop();
+            const cr = cur[0], cc = cur[1];
+            size++;
+            const nbrs = [[cr-1,cc],[cr+1,cc],[cr,cc-1],[cr,cc+1]];
+            nbrs.forEach(function(n){
+              const nr = n[0], nc = n[1];
+              if(nr >= 0 && nr < buildRows && nc >= 0 && nc < buildCols && board[nr][nc] && !visited[nr][nc]){
+                visited[nr][nc] = true;
+                stack.push([nr,nc]);
+              }
+            });
+          }
+          maxGroup = Math.max(maxGroup, size);
+        }
+      }
+    }
+    if(total >= 4 && maxGroup / total < 0.80){
+      findings.push({text:'有部分房間同主體分離，間隔唔連貫', delta:-0.06});
+    }
+
+    let totalDelta = findings.reduce(function(s, f){ return s + f.delta; }, 0);
+    // 扣分上限放寬到 -60%，讓荒謬布局真正被狠狠扣
+    totalDelta = Math.max(-0.60, Math.min(0.30, totalDelta));
+    return {findings:findings, totalDelta:totalDelta, windowed:windowed, isolated:isolated, fillRate:fillRate};
+  }
+
+  function endGame(){
+    if(gameOver) return;
+    gameOver = true;
+    paused = false;
+    if(timer){ clearInterval(timer); timer = null; }
+    stopAllRepeats();
+    pauseOverlay.classList.remove('show');
+    pauseBtn.textContent = '⏸';
+
+    const total = Object.values(roomCount).reduce(function(a, b){ return a + b; }, 0);
+    const storage = roomCount['儲物房'] || 0;
+    const living = roomCount['客廳'] || 0;
+
+    const capacity = buildCols * buildRows;
+    const maxArea = capacity * 50;
+    const area = total * 50;
+    const plotRatio = Math.round(total / capacity * 100);
+
+    const layout = analyzeLayout();
+
+    const baseValue = district.price * area;
+    const storageBonus = storage * 0.05;
+    const livingBonus = living * 0.03;
+    const facilityFactor = 1 + storageBonus + livingBonus;
+    const layoutFactor = 1 + layout.totalDelta;
+    const card = randPick(CHANCE_CARDS);
+    const finalValue = Math.round(baseValue * facilityFactor * layoutFactor * card.factor);
+
+    // 評級用「地積比率」，唔用總格數
+    const grade = plotRatio >= 75 ? '超級豪宅' : plotRatio >= 55 ? '豪宅' : plotRatio >= 35 ? '上車盤' : '納米樓';
+    const comment = storage >= 2 ? '儲物空間充足，適合一家大細！' :
+                    living >= 2 ? '客廳寬敞，招呼朋友一流！' :
+                                  '間隔實用，細細粒容易食！';
+    const landComment = buildCols <= 5 ? '地契窄，起唔到豪宅，但勝在實用！' :
+                        buildCols >= 7 ? '地皮鬆動，可以慢慢起大屋！' :
+                                         '地皮中規中矩，夠用有餘！';
+
+    const findingsHtml = layout.findings.length
+      ? layout.findings.map(function(f){
+          const pct = Math.round(f.delta * 100);
+          const cls = pct > 0 ? 'plus' : pct < 0 ? 'minus' : 'neutral';
+          const sign = pct > 0 ? '+' : '';
+          return '<div class="finding"><span>' + f.text + '</span><span class="' + cls + '">' + sign + pct + '%</span></div>';
+        }).join('')
+      : '<div class="finding"><span>間隔中規中矩，冇特別驚喜</span><span class="neutral">±0%</span></div>';
+
+    const layoutPct = Math.round(layout.totalDelta * 100);
+    const layoutCls = layoutPct > 0 ? 'plus' : layoutPct < 0 ? 'minus' : 'neutral';
+    const layoutSign = layoutPct > 0 ? '+' : '';
+
+    reportBody.innerHTML =
+      '<h2>🏠 房屋報告：' + grade + '</h2>' +
+      '<p class="stat">📍 地段：<b style="color:' + district.color + '">' + district.name + '</b>（' + district.tier + '）</p>' +
+      '<p class="stat">📜 地契限制：可建範圍 ' + buildCols + '×' + buildRows + ' 格，面積上限 ' + maxArea.toLocaleString() + ' 呎</p>' +
+      '<p class="stat">🏗️ 實際面積：' + area.toLocaleString() + ' 呎（' + total + ' 間房 × 50 呎）</p>' +
+      '<p class="stat">📊 地積比率：' + plotRatio + '%</p>' +
+      '<h3>🔍 整體間隔評析</h3>' +
+      findingsHtml +
+      '<div class="finding" style="border-bottom:none;font-weight:bold;margin-top:6px;">' +
+        '<span>間隔總調整</span><span class="' + layoutCls + '">' + layoutSign + layoutPct + '%</span>' +
+      '</div>' +
+      '<h3>💰 樓價計算</h3>' +
+      '<p class="stat">地段基準呎價：$' + district.price.toLocaleString() + '/呎</p>' +
+      '<p class="stat">設施加成：儲物房 +' + Math.round(storageBonus * 100) + '%、客廳 +' + Math.round(livingBonus * 100) + '%</p>' +
+      '<p class="stat">🃏 機會卡：' + card.text + '（樓價 ' + (card.factor >= 1 ? '+' : '') + Math.round((card.factor - 1) * 100) + '%）</p>' +
+      '<p class="stat price">最終估算樓價：$' + finalValue.toLocaleString() + '</p>' +
+      '<p class="stat">🗣️ 地產經紀評語：' + comment + district.comment + landComment + '</p>' +
+      '<p style="color:#888;font-size:12px;">（報告僅供參考，實際樓價以市場為準 😄）</p>';
+
+    reportEl.classList.add('show');
+    setReportView('report');
+    reportBody.scrollTop = 0;
+
+    // 報告剛彈出時，玩家手指通常仲喺下面嘅操作鍵位置；
+    // 鎖一秒再開放「再玩一次」，確保佢睇到份報告。
+    againLocked = true;
+    againBtn.classList.add('cool');
+    if(againTimer) clearTimeout(againTimer);
+    againTimer = setTimeout(function(){
+      againLocked = false;
+      againTimer = null;
+      againBtn.classList.remove('cool');
+    }, AGAIN_LOCK_MS);
+  }
+
+  /* ---------- 計時 / 暫停 ---------- */
+  function tick(){
+    if(gameOver || paused || !current) return;
+    if(!collide(current.x, current.y + 1, current.shape)){
+      current.y++;
+      draw();
+    } else {
+      lock();
+    }
+  }
+
+  function startTimer(){
+    if(timer) clearInterval(timer);
+    timer = setInterval(tick, DROP_MS);
+  }
+
+  function pauseGame(){
+    if(gameOver || paused) return;
+    paused = true;
+    if(timer){ clearInterval(timer); timer = null; }
+    stopAllRepeats();
+    pauseOverlay.classList.add('show');
+    pauseBtn.textContent = '▶';
+    pauseBtn.setAttribute('aria-label', '繼續遊戲');
+  }
+
+  function resumeGame(){
+    if(!paused) return;
+    paused = false;
+    pauseOverlay.classList.remove('show');
+    pauseBtn.textContent = '⏸';
+    pauseBtn.setAttribute('aria-label', '暫停遊戲');
+    startTimer();
+  }
+
+  function togglePause(){
+    if(gameOver) return;
+    if(paused) resumeGame(); else pauseGame();
+  }
+
+  /* ---------- 報告 / 間屋 切換 ---------- */
+  function setReportView(view){
+    const house = view === 'house';
+    reportEl.classList.toggle('house-view', house);
+    document.body.classList.toggle('house-view', house);
+    tabHouse.classList.toggle('active', house);
+    tabReport.classList.toggle('active', !house);
+    tabHouse.setAttribute('aria-selected', house ? 'true' : 'false');
+    tabReport.setAttribute('aria-selected', house ? 'false' : 'true');
+  }
+
+  function initGame(){
+    if(timer){ clearInterval(timer); timer = null; }
+    stopAllRepeats();
+
+    paused = false;
+    gameOver = false;
+    pauseOverlay.classList.remove('show');
+    pauseBtn.textContent = '⏸';
+    pauseBtn.setAttribute('aria-label', '暫停遊戲');
+    reportEl.classList.remove('show');
+    setReportView('report');
+    reportEl.scrollTop = 0;
+    reportBody.scrollTop = 0;
+    if(againTimer){ clearTimeout(againTimer); againTimer = null; }
+    againLocked = false;
+    againBtn.classList.remove('cool');
+
+    board = Array.from({length:ROWS}, function(){ return Array(COLS).fill(null); });
+    current = null;
+    next = null;
+    holdPiece = null;
+    canHold = true;
+    roomCount = {};
+
+    district = pickDistrict();
+    buildCols = district.buildCols;
+    buildRows = district.buildRows;
+
+    showDistrict();
+    fitBoard();
+    updateHoldLabel();
+    next = makeDoorPiece();
+    spawn();
+    startTimer();
+  }
+
+   /* ---------- 按鈕：支援長按連發（左右／加速）---------- */
+  const repeatStoppers = new Set();
+
+  function stopAllRepeats(){
+    repeatStoppers.forEach(function(stopFn){ stopFn(); });
+  }
+
+  function bindRepeat(btn, fn, rep){
+    let delayT = null, intT = null, pid = null;
+
+    function stop(){
+      if(delayT !== null){ clearTimeout(delayT); delayT = null; }
+      if(intT !== null){ clearInterval(intT); intT = null; }
+      btn.classList.remove('pressed');
+      pid = null;
+    }
+
+    repeatStoppers.add(stop);
+
+    function start(e){
+      if(e && e.button !== undefined && e.button !== 0) return;
+      if(e) e.preventDefault();
+      stop();
+      if(gameOver || paused) return;
+
+      btn.classList.add('pressed');
+      if(e && e.pointerId !== undefined){
+        pid = e.pointerId;
+        try{ btn.setPointerCapture(pid); }catch(err){}
+      }
+      fn();
+
+      if(rep){
+        delayT = setTimeout(function(){
+          intT = setInterval(fn, rep[1]);
+        }, rep[0]);
+      }
+    }
+
+    btn.addEventListener('pointerdown', start);
+    btn.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+    btn.addEventListener('lostpointercapture', stop);
+    btn.addEventListener('pointerup', function(e){ if(pid !== null && e.pointerId === pid) stop(); });
+    btn.addEventListener('pointercancel', function(e){ if(pid !== null && e.pointerId === pid) stop(); });
+    // 安全網：手指喺按鈕外放開
+    window.addEventListener('pointerup', function(e){ if(pid !== null && e.pointerId === pid) stop(); });
+    window.addEventListener('pointercancel', function(e){ if(pid !== null && e.pointerId === pid) stop(); });
+
+    // 鍵盤操作（Enter）：唔靠預設 click，避免同 pointerdown 重複觸發
+    // 空白鍵留返畀「暫停／繼續」，所以呢度唔攔 space，等 document 層統一處理
+    btn.addEventListener('keydown', function(e){
+      if(e.key === 'Enter'){
+        e.preventDefault();
+        if(!gameOver && !paused) fn();
+      }
+    });
+    // 輔助技術（VoiceOver 等）發出嘅 click 冇 pointer 事件，detail 為 0
+    btn.addEventListener('click', function(e){
+      if(e.detail === 0){
+        e.preventDefault();
+        if(!gameOver && !paused) fn();
+      }
+    });
+  }
+
+  const actions = {
+    left: function(){ move(-1); },
+    right: function(){ move(1); },
+    rot: rotate,
+    down: softDrop,
+    hold: holdPieceFunc
+  };
+  const repeats = {
+    left: [170, 110],
+    right: [170, 110],
+    down: [140, 60]
+  };
+
+  document.querySelectorAll('#controls button').forEach(function(btn){
+    const act = btn.dataset.act;
+    if(!actions[act]) return;
+    bindRepeat(btn, actions[act], repeats[act]);
+  });
+
+  /* ---------- 棋盤手勢：左右拖動移動、向下拖動加速 ---------- */
+  let gesture = null;
+
+  canvas.addEventListener('pointerdown', function(e){
+    if(e.button !== undefined && e.button !== 0) return;
+    e.preventDefault();
+    if(gameOver || paused) return;
+    gesture = { id:e.pointerId, x:e.clientX, y:e.clientY };
+    try{ canvas.setPointerCapture(e.pointerId); }catch(err){}
+  });
+
+  canvas.addEventListener('pointermove', function(e){
+    if(!gesture || e.pointerId !== gesture.id) return;
+    if(gameOver || paused) return;
+    e.preventDefault();
+
+    const step = Math.max(20, CELL * 0.72);
+    const dx = e.clientX - gesture.x;
+    if(Math.abs(dx) >= step){
+      const n = Math.max(-4, Math.min(4, Math.trunc(dx / step)));
+      for(let i = 0; i < Math.abs(n); i++) move(n > 0 ? 1 : -1);
+      gesture.x += n * step;
+    }
+
+    const dy = e.clientY - gesture.y;
+    if(dy >= step){
+      const n = Math.max(0, Math.min(3, Math.trunc(dy / step)));
+      for(let i = 0; i < n; i++) softDrop();
+      gesture.y += n * step;
+    } else if(dy < 0){
+      gesture.y = e.clientY;
+    }
+  });
+
+  function endGesture(e){
+    if(gesture && (e === undefined || e.pointerId === gesture.id)) gesture = null;
+  }
+  canvas.addEventListener('pointerup', endGesture);
+  canvas.addEventListener('pointercancel', endGesture);
+  canvas.addEventListener('lostpointercapture', endGesture);
+
+  /* ---------- 暫停 / 重開 ---------- */
+  pauseBtn.addEventListener('click', togglePause);
+  againBtn.addEventListener('click', function(){
+    if(againLocked || !gameOver) return;
+    initGame();
+  });
+  tabHouse.addEventListener('click', function(){ setReportView('house'); });
+  tabReport.addEventListener('click', function(){ setReportView('report'); });
+  showReportBtn.addEventListener('click', function(){ setReportView('report'); });
+  document.getElementById('resume-btn').addEventListener('click', resumeGame);
+  document.getElementById('restart-btn').addEventListener('click', initGame);
+  // 灰色背景唔再當「繼續」掣：只有「繼續」或右上角暫停圖示可以恢復遊戲
+
+  document.addEventListener('visibilitychange', function(){
+    if(document.hidden && !gameOver) pauseGame();
+  });
+
+  /* ---------- 鍵盤（桌面）---------- */
+  document.addEventListener('keydown', function(e){
+    // P / Esc / 空白鍵 都可以暫停或繼續；空白鍵就算 focus 咗喺按鈕上都照樣暫停
+    if(e.key === 'p' || e.key === 'P' || e.key === 'Escape' ||
+       e.key === ' ' || e.key === 'Spacebar' || e.code === 'Space'){
+      e.preventDefault();
+      togglePause();
+      return;
+    }
+    if(gameOver || paused) return;
+    if(e.key === 'ArrowLeft'){ move(-1); e.preventDefault(); }
+    else if(e.key === 'ArrowRight'){ move(1); e.preventDefault(); }
+    else if(e.key === 'ArrowUp'){ rotate(); e.preventDefault(); }
+    else if(e.key === 'ArrowDown'){ softDrop(); e.preventDefault(); }
+    else if(e.key === 'c' || e.key === 'C' || e.key === 'Shift'){ holdPieceFunc(); e.preventDefault(); }
+  });
+
+  document.addEventListener('gesturestart', function(e){ e.preventDefault(); });
+  document.addEventListener('gesturechange', function(e){ e.preventDefault(); });
+
+  /* ---------- 禁止雙擊放大（舊版 iOS 唔理 touch-action）---------- */
+  let lastTouchEnd = 0;
+  document.addEventListener('touchend', function(e){
+    const now = Date.now();
+    if(now - lastTouchEnd <= 320) e.preventDefault();
+    lastTouchEnd = now;
+  }, { passive:false });
+
+  /* ---------- 尺寸變化 ---------- */
+  if('ResizeObserver' in window){
+    new ResizeObserver(function(){ fitBoard(); }).observe(stageEl);
+  }
+  window.addEventListener('resize', fitBoard);
+  window.addEventListener('orientationchange', function(){
+    setTimeout(fitBoard, 250);
+  });
+  if(window.visualViewport){
+    window.visualViewport.addEventListener('resize', fitBoard);
+  }
+
+  initGame();
+})();
+</script>
+</body>
+</html>
