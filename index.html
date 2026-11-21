@@ -94,6 +94,7 @@
 
   /* ---------- Hold / 下一個 ---------- */
   #hud{
+    position:relative;
     flex:0 0 auto;
     display:flex;
     align-items:center;
@@ -331,6 +332,72 @@
     background:#fff;
     box-shadow:0 -10px 18px rgba(0,0,0,.05);
   }
+
+  /* ---------- 報告／間屋 切換 ---------- */
+  .report-tabs{
+    flex:0 0 auto;
+    display:flex;
+    gap:6px;
+    padding:10px 16px 8px;
+    background:#fff;
+    border-bottom:1px solid #eee;
+  }
+  .report-tabs button{
+    -webkit-appearance:none;
+    appearance:none;
+    flex:1 1 0;
+    min-height:38px;
+    border-radius:10px;
+    border:1px solid #ddd5c8;
+    background:#f7f3ea;
+    color:#5c564d;
+    font-family:inherit;
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+    touch-action:manipulation;
+  }
+  .report-tabs button.active{
+    background:var(--blue);
+    border-color:var(--blue);
+    color:#fff;
+  }
+  #show-report{
+    display:none;
+    position:absolute;
+    left:50%;
+    top:50%;
+    transform:translate(-50%,-50%);
+    align-items:center;
+    justify-content:center;
+    max-width:calc(100% - 16px);
+    min-height:40px;
+    padding:0 16px;
+    border:0;
+    border-radius:22px;
+    background:#fff;
+    color:#2c3e50;
+    font-family:inherit;
+    font-size:14px;
+    font-weight:700;
+    white-space:nowrap;
+    box-shadow:0 8px 22px rgba(0,0,0,.25);
+    cursor:pointer;
+    pointer-events:auto;
+    touch-action:manipulation;
+  }
+  /* 睇間屋模式：拎走深色背景同白卡，淨返個棋盤 */
+  #report.house-view{
+    background:transparent;
+    -webkit-backdrop-filter:none;
+    backdrop-filter:none;
+    pointer-events:none;
+  }
+  #report.house-view .sheet{ display:none; }
+  /* 睇間屋時，Hold/下一個同暫停都冇用，收起佢哋，原地顯示「睇返報告」 */
+  body.house-view #show-report{ display:flex; }
+  body.house-view #hud .slot,
+  body.house-view #pause-btn{ visibility:hidden; }
   .sheet h2{ margin:0 0 12px; font-size:19px; line-height:1.3; color:#c0392b; }
   .sheet h3{
     margin:18px 0 8px;
@@ -454,6 +521,7 @@
       <span id="next-text" class="slot-label"></span>
     </div>
     <button id="pause-btn" type="button" aria-label="暫停遊戲">⏸</button>
+    <button id="show-report" type="button">📄 睇返房屋報告</button>
   </div>
 
   <div id="stage">
@@ -487,6 +555,10 @@
 
 <div id="report" role="dialog" aria-modal="true" aria-label="房屋報告">
   <div class="sheet">
+    <div class="report-tabs" role="tablist" aria-label="切換報告或間屋">
+      <button id="tab-house" type="button" role="tab" aria-selected="false">🏠 我間屋</button>
+      <button id="tab-report" type="button" role="tab" aria-selected="true" class="active">📄 房屋報告</button>
+    </div>
     <div id="report-body"></div>
     <div class="report-actions">
       <button id="again" type="button">再玩一次</button>
@@ -508,6 +580,9 @@
   const reportEl = document.getElementById('report');
   const reportBody = document.getElementById('report-body');
   const againBtn = document.getElementById('again');
+  const tabHouse = document.getElementById('tab-house');
+  const tabReport = document.getElementById('tab-report');
+  const showReportBtn = document.getElementById('show-report');
   const AGAIN_LOCK_MS = 1000;
   let againLocked = false, againTimer = null;
 
@@ -1057,6 +1132,7 @@
       '<p style="color:#888;font-size:12px;">（報告僅供參考，實際樓價以市場為準 😄）</p>';
 
     reportEl.classList.add('show');
+    setReportView('report');
     reportBody.scrollTop = 0;
 
     // 報告剛彈出時，玩家手指通常仲喺下面嘅操作鍵位置；
@@ -1111,6 +1187,17 @@
     if(paused) resumeGame(); else pauseGame();
   }
 
+  /* ---------- 報告 / 間屋 切換 ---------- */
+  function setReportView(view){
+    const house = view === 'house';
+    reportEl.classList.toggle('house-view', house);
+    document.body.classList.toggle('house-view', house);
+    tabHouse.classList.toggle('active', house);
+    tabReport.classList.toggle('active', !house);
+    tabHouse.setAttribute('aria-selected', house ? 'true' : 'false');
+    tabReport.setAttribute('aria-selected', house ? 'false' : 'true');
+  }
+
   function initGame(){
     if(timer){ clearInterval(timer); timer = null; }
     stopAllRepeats();
@@ -1121,6 +1208,7 @@
     pauseBtn.textContent = '⏸';
     pauseBtn.setAttribute('aria-label', '暫停遊戲');
     reportEl.classList.remove('show');
+    setReportView('report');
     reportEl.scrollTop = 0;
     reportBody.scrollTop = 0;
     if(againTimer){ clearTimeout(againTimer); againTimer = null; }
@@ -1277,6 +1365,9 @@
     if(againLocked || !gameOver) return;
     initGame();
   });
+  tabHouse.addEventListener('click', function(){ setReportView('house'); });
+  tabReport.addEventListener('click', function(){ setReportView('report'); });
+  showReportBtn.addEventListener('click', function(){ setReportView('report'); });
   document.getElementById('resume-btn').addEventListener('click', resumeGame);
   document.getElementById('restart-btn').addEventListener('click', initGame);
   // 灰色背景唔再當「繼續」掣：只有「繼續」或右上角暫停圖示可以恢復遊戲
