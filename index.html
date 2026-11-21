@@ -168,8 +168,8 @@
   /* ---------- 提示 ---------- */
   #hint{
     flex:0 0 auto;
-    font-size:10.5px;
-    line-height:1.4;
+    font-size:11.5px;
+    line-height:1.45;
     color:#6b655c;
     text-align:center;
     padding:6px 2px 4px;
@@ -450,7 +450,7 @@
     #brand{ font-size:13px; }
     .slot canvas{ width:52px; height:38px; }
     .slot-label{ font-size:10.5px; max-width:96px; }
-    #hint{ font-size:10px; padding-top:4px; }
+    #hint{ font-size:11px; padding-top:4px; }
     #controls button{ height:clamp(48px, 8dvh, 58px); }
   }
 
@@ -521,28 +521,33 @@
       align-items:start;
     }
     #top{ grid-area:top; display:flex; flex-direction:column; gap:4px; }
-    #brand{ display:block; font-size:20px; }
-    .d-name{ font-size:16px; }
-    .d-meta{ font-size:12px; white-space:normal; line-height:1.35; }
+    #brand{ display:block; font-size:26px; }
+    .d-name{ font-size:21px; }
+    .d-meta{ font-size:15.5px; white-space:normal; line-height:1.4; }
     #hud{
       grid-area:hud;
       gap:18px;
-      padding:4px 0;
+      padding:6px 0;
       margin:0;
       border-top:1px solid rgba(0,0,0,.07);
       border-bottom:1px solid rgba(0,0,0,.07);
     }
-    .slot canvas{ width:80px; height:60px; }
-    .slot-label{ font-size:13px; max-width:170px; }
-    #pause-btn{ width:52px; height:52px; font-size:20px; border-radius:14px; }
+    .slot canvas{ width:96px; height:72px; }
+    .slot-label{ font-size:16px; max-width:210px; }
+    #pause-btn{ width:58px; height:58px; font-size:24px; border-radius:14px; }
     #stage{ grid-area:stage; height:100%; align-self:stretch; }
     #hint{
       grid-area:hint;
       text-align:left;
-      font-size:12px;
-      padding:0;
-      line-height:1.6;
+      font-size:17px;
+      line-height:1.85;
+      color:#3f3a33;
+      background:#fff;
+      border:1px solid #e3dbcd;
+      border-radius:12px;
+      padding:10px 14px;
     }
+    #hint .warn{ font-size:16px; display:inline-block; margin-top:6px; }
     #controls{
       grid-area:controls;
       align-self:stretch;
@@ -554,8 +559,21 @@
       align-content:end;
       min-height:220px;
     }
-    #controls button{ height:auto; min-height:58px; font-size:28px; border-radius:16px; }
-    #controls button[data-act="hold"]{ grid-column:1/-1; font-size:16px; }
+    #controls button{ height:auto; min-height:58px; font-size:32px; border-radius:16px; }
+    #controls button[data-act="hold"]{ grid-column:1/-1; font-size:20px; }
+    #show-report{ font-size:16px; min-height:46px; padding:0 22px; }
+    /* 結算報告都放大，唔好再用電話尺寸 */
+    .sheet{ max-width:760px; font-size:17px; }
+    .sheet h2{ font-size:28px; margin-bottom:16px; }
+    .sheet h3{ font-size:20px; margin:24px 0 10px; }
+    .stat{ margin:9px 0; line-height:1.6; }
+    .finding{ font-size:16px; padding:9px 0; }
+    .price{ font-size:34px; }
+    #report-body{ padding:24px 26px 6px; }
+    .report-tabs{ padding:14px 26px 10px; }
+    .report-tabs button{ font-size:16px; min-height:48px; border-radius:12px; }
+    .report-actions{ padding:10px 26px 20px; }
+    #again{ min-height:60px; font-size:19px; }
   }
 </style>
 </head>
@@ -843,7 +861,7 @@
 
     if(CELL >= 26){
       ctx.fillStyle = '#fff';
-      ctx.font = 'bold ' + Math.round(CELL * 0.42) + 'px "PingFang TC","Microsoft JhengHei",system-ui,sans-serif';
+      ctx.font = 'bold ' + Math.round(CELL * 0.5) + 'px "PingFang TC","Microsoft JhengHei",system-ui,sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(room.short, px + CELL / 2, py + CELL / 2 + 1);
