@@ -1171,17 +1171,11 @@
     // 大門位置
     const doorCells = cells.filter(function(cell){ return cell.room.name === '大門'; });
     if(doorCells.length > 0){
-      // 只有貼住左右兩邊（街）先算「貼街」；貼住下方＝藏喺屋內，唔算貼街
-      const onStreet = doorCells.some(function(cell){
-        return cell.c === 0 || cell.c === buildCols - 1;
+      const onEdge = doorCells.some(function(cell){
+        return cell.c === 0 || cell.c === buildCols - 1 || cell.r === 0 || cell.r === buildRows - 1;
       });
-      const atBottom = doorCells.some(function(cell){
-        return cell.r === buildRows - 1;
-      });
-      if(onStreet){
+      if(onEdge){
         findings.push({text:'大門貼街，出入方便', delta:0.03});
-      } else if(atBottom){
-        findings.push({text:'大門貼住下方，藏喺屋內，唔算貼街', delta:-0.03});
       } else {
         findings.push({text:'大門藏喺屋內，風水奇怪', delta:-0.03});
       }
