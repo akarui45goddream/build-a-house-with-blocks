@@ -371,6 +371,8 @@
     box-shadow:0 3px 0 #1e8449;
   }
   #again:active{ transform:translateY(3px); box-shadow:none; }
+  /* 剛完場時鎖住一秒，避免玩家仍然喺下面連按時誤觸重開 */
+  #again.cool{ opacity:.4; pointer-events:none; }
 
   /* ---------- 矮螢幕（細機）---------- */
   @media (max-height: 700px){
@@ -501,6 +503,9 @@
   const pauseBtn = document.getElementById('pause-btn');
   const reportEl = document.getElementById('report');
   const reportBody = document.getElementById('report-body');
+  const againBtn = document.getElementById('again');
+  const AGAIN_LOCK_MS = 1000;
+  let againLocked = false, againTimer = null;
 
   const DISTRICTS = [
     {name:'太平山', tier:'山頂豪宅區', price:8000, color:'#8e44ad', buildCols:8, buildRows:14, comment:'山頂豪宅，名人聚居，地皮罕有，可以慢慢起！'},
@@ -1049,6 +1054,17 @@
 
     reportEl.classList.add('show');
     reportBody.scrollTop = 0;
+
+    // 報告剛彈出時，玩家手指通常仲喺下面嘅操作鍵位置；
+    // 鎖一秒再開放「再玩一次」，確保佢睇到份報告。
+    againLocked = true;
+    againBtn.classList.add('cool');
+    if(againTimer) clearTimeout(againTimer);
+    againTimer = setTimeout(function(){
+      againLocked = false;
+      againTimer = null;
+      againBtn.classList.remove('cool');
+    }, AGAIN_LOCK_MS);
   }
 
   /* ---------- 計時 / 暫停 ---------- */
@@ -1103,6 +1119,9 @@
     reportEl.classList.remove('show');
     reportEl.scrollTop = 0;
     reportBody.scrollTop = 0;
+    if(againTimer){ clearTimeout(againTimer); againTimer = null; }
+    againLocked = false;
+    againBtn.classList.remove('cool');
 
     board = Array.from({length:ROWS}, function(){ return Array(COLS).fill(null); });
     current = null;
@@ -1249,7 +1268,10 @@
 
   /* ---------- 暫停 / 重開 ---------- */
   pauseBtn.addEventListener('click', togglePause);
-  document.getElementById('again').addEventListener('click', initGame);
+  againBtn.addEventListener('click', function(){
+    if(againLocked || !gameOver) return;
+    initGame();
+  });
   document.getElementById('resume-btn').addEventListener('click', resumeGame);
   document.getElementById('restart-btn').addEventListener('click', initGame);
   document.getElementById('pause-overlay').addEventListener('click', function(e){
