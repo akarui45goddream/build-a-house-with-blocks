@@ -1168,11 +1168,14 @@
       findings.push({text:'有 ' + windowed + ' 間房靠窗，採光良好', delta:Math.min(0.20, windowed * 0.02)});
     }
 
-    // 大門位置
+    // 大門位置：冇大門要扣分；貼住任何一邊（上、下、左、右）都算「貼街」
     const doorCells = cells.filter(function(cell){ return cell.room.name === '大門'; });
-    if(doorCells.length > 0){
+    if(doorCells.length === 0){
+      findings.push({text:'全屋冇大門，出入都有問題', delta:-0.10});
+    } else {
       const onEdge = doorCells.some(function(cell){
-        return cell.c === 0 || cell.c === buildCols - 1 || cell.r === 0 || cell.r === buildRows - 1;
+        return cell.c === 0 || cell.c === buildCols - 1 ||
+               cell.r === 0 || cell.r === buildRows - 1;
       });
       if(onEdge){
         findings.push({text:'大門貼街，出入方便', delta:0.03});
